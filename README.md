@@ -19,7 +19,7 @@ Then add this to your `init` file:
 
 Simply `M-x denote-graph-generate-dot-file`. 
 
-The output DOT file will be called according to the value of `denote-graph-output-filename` (default is `zettelkasten.dot`).
+The output DOT file will be named according to the value of `denote-graph-output-filename` (default is `zettelkasten.dot`).
 
 
 

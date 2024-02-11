@@ -3,7 +3,6 @@
 ;; Copyright (C) 2024  Matteo Cavada
 
 ;; Author: Matteo Cavada <matteo.cavada@inventati.org>
-;; Keywords: denote note-taking
 ;; Version: 0.1.0
 ;; Package-Requires: ((denote "2.0"))
 
@@ -42,8 +41,7 @@
   '(lambda (row) t)
   "A function that return =T= when a node is to be included in the final graph.
 
-The function must take a ROW in input (i.e. a three elements list of the form
-(timestamp human-name (keywords)), which encodes a node) and must return t when
+The function must take a ROW in input and must return t when
 the row is to be included in the final graph, nil otherwise."
   :type 'function
   :group 'denote-graph
@@ -56,6 +54,19 @@ the row is to be included in the final graph, nil otherwise."
   "Flatten only one level of nested lists in the given LST."
   (apply #'append (mapcar (lambda (x) (if (listp x) x (list x))) lst)))
 
+
+(defun denote-graph--return-links (&optional fname)
+  "This is just `denote-link-return-links`, but it does not
+keep buffers open after visit.
+
+Useful to avoid creating 100s of buffers while generating the graph!"
+  (when-let ((current-file (or file (buffer-file-name)))
+             ((denote-file-has-supported-extension-p current-file))
+             (file-type (denote-filetype-heuristics current-file))
+             (regexp (denote--link-in-context-regexp file-type)))
+    (with-temp-buffer
+      (insert-file-contents current-file)
+      (denote-link--expand-idenifiers regexp))))
 
 ;;; =============================================================================
 ;;; Generate nodes and a graph from the `denote` directory.
@@ -78,13 +89,19 @@ The node will be structured as (timestamp human-title (keyword1 keyword2 ...))"
 	(denote-graph--extract-keywords-from absolute-fpath)))
 
 (defun denote-graph--mk-graph ()
-  "Generate a Lisp graph from the files in denote-directory."
+  "Generate a Lisp graph from the files in denote-directory.
+
+The generated graph is a list of 'rows'.
+
+A row is a list with structure (node1 node2 ... nodeN), which encode the
+information 'the neighbours of node1 are node2 ... nodeN'.
+"
   ;; A graph is a list of rows.
   ;; A row is a list of nodes; the first node is the root, the rest are its neighbours.
   ;; A node is a list of the form: (timestamp human-name (keyword1 keyword2 ...))
   (cl-loop for fname in (denote-directory-files) collect
     (mapcar #'denote-graph--mk-node
- 	    (cons fname (denote-link-return-links fname)))))
+ 	    (cons fname (denote-graph--return-links fname)))))
 
 ;; (insert (prin1-to-string (denote-graph--mk-graph)))
 
