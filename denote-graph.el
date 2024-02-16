@@ -32,10 +32,15 @@
   :group 'denote)
 
 (defcustom denote-graph-output-filename
-  "zettelkasten.dot"
+  nil ;; "zettelkasten.dot"
   "Name of the generated DOT file."
-  :type 'string
+  :type '(choice (sexp :tag "runtime expression"
+		       :value (expand-file-name "zettelkasten.dot"
+						denote-directory))
+		 (file :tag "static file path"
+		       :value "~/zettelkasten.dot"))
   :group 'denote-graph)
+
 
 (defcustom denote-graph-filtering-function
   '(lambda (row) t)
@@ -54,19 +59,20 @@ the row is to be included in the final graph, nil otherwise."
   "Flatten only one level of nested lists in the given LST."
   (apply #'append (mapcar (lambda (x) (if (listp x) x (list x))) lst)))
 
+;;; Useless since commit https://github.com/protesilaos/denote/pull/252
+;;; in denote.el
+;; (defun denote-graph--return-links (&optional file)
+;;   "This is just `denote-link-return-links`, but it does not
+;; keep buffers open after visit.
 
-(defun denote-graph--return-links (&optional fname)
-  "This is just `denote-link-return-links`, but it does not
-keep buffers open after visit.
-
-Useful to avoid creating 100s of buffers while generating the graph!"
-  (when-let ((current-file (or file (buffer-file-name)))
-             ((denote-file-has-supported-extension-p current-file))
-             (file-type (denote-filetype-heuristics current-file))
-             (regexp (denote--link-in-context-regexp file-type)))
-    (with-temp-buffer
-      (insert-file-contents current-file)
-      (denote-link--expand-idenifiers regexp))))
+;; Useful to avoid creating 100s of buffers while generating the graph!"
+;;   (when-let ((current-file (or file (buffer-file-name)))
+;;              ((denote-file-has-supported-extension-p current-file))
+;;              (file-type (denote-filetype-heuristics current-file))
+;;              (regexp (denote--link-in-context-regexp file-type)))
+;;     (with-temp-buffer
+;;       (insert-file-contents current-file)
+;;       (denote-link--expand-identifiers regexp))))
 
 ;;; =============================================================================
 ;;; Generate nodes and a graph from the `denote` directory.
@@ -101,10 +107,7 @@ information 'the neighbours of node1 are node2 ... nodeN'.
   ;; A node is a list of the form: (timestamp human-name (keyword1 keyword2 ...))
   (cl-loop for fname in (denote-directory-files) collect
     (mapcar #'denote-graph--mk-node
- 	    (cons fname (denote-graph--return-links fname)))))
-
-;; (insert (prin1-to-string (denote-graph--mk-graph)))
-
+ 	    (cons fname (denote-link-return-links fname)))))
 
 ;;; =============================================================================
 ;;; Convert the lisp representations of nodes into DOT source code
@@ -161,6 +164,11 @@ graph node in DOT language."
 ;;; =============================================================================
 ;;; Finally...
 
+(defun denote-graph--output-path ()
+  (if (stringp denote-graph-output-filename)
+      denote-graph-output-filename
+    (eval denote-graph-output-filename)))
+
 (defun denote-graph-generate-dot-sourcecode ()
   "Generate the DOT source code of your knowledge graph."
   (let ((graph (denote-graph--filter-undesired-rows (denote-graph--mk-graph))))
@@ -172,7 +180,7 @@ graph node in DOT language."
   "Write to file the DOT source code of your knowledge graph."
   (interactive)
   (message "Generating DOT source code...")
-  (with-temp-file denote-graph-output-filename
+  (with-temp-file (denote-graph--output-path) ;denote-graph-output-filename
     (insert (denote-graph-generate-dot-sourcecode)))
   (find-file denote-graph-output-filename)
   (message "Done"))
