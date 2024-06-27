@@ -50,6 +50,7 @@
   :group 'denote-graph
   )
 
+
 ;;; =============================================================================
 ;;; Utility functions
 
@@ -79,7 +80,9 @@ The node will be structured as (timestamp human-title (keyword1 keyword2 ...))"
 	(denote-graph--extract-keywords-from absolute-fpath)))
 
 (defun denote-graph--filtered-links (absolute-fpath)
-  "Exclude unwanted links from list of links."
+  "Returns non-excluded neighbours nodes of ABSOLUTE-FPATH.
+
+Excludes adjaecent nodes from list of links (per DENOTE-GRAPH-EXCLUDE-NODE-IF)."
   (cl-loop for fpath-link in (denote-link-return-links absolute-fpath)
 	   if (not (funcall denote-graph-exclude-node-if fpath-link))
 	   collect fpath-link))
@@ -119,7 +122,7 @@ The list of unique nodenames is extracted from GRAPH.
 The result is a list of strings, each one declaring a
 graph node in DOT language."
   (cl-loop
-   for tuple in (cl-delete-duplicates (denote-graph--flatten graph) :test 'equalp)
+   for tuple in (cl-delete-duplicates (denote-graph--flatten graph) :test 'cl-equalp)
 	  collect
 	  (denote-graph--generate-dot-nodename tuple)))
 
@@ -144,15 +147,6 @@ graph node in DOT language."
   (cl-loop for row in graph collect
 	   (denote-graph--generate-dot-edges row)))
 
-
-;;; =============================================================================
-;;; Functions to exclude some rows from the final graph
-
-;; (defun denote-graph--filter-undesired-rows (graph)
-;;   "Filters out unwanted nodes from GRAPH."
-;;   (cl-loop for row in graph
-;; 	   if (funcall denote-graph-filtering-function row)
-;; 	   collect row))
 
 
 ;;; =============================================================================
