@@ -63,57 +63,69 @@
 ;;; Generate nodes and a graph from the `denote` directory.
 ;;; A node is simply a list of the form: (timestamp human-name (keyword1 keyword2 ...))
 
-(defun denote-graph--extract-keywords-from (absolute-fpath)
-  "Return the keywords list of ABSOLUTE-FPATH, if any; otherwise, nil."
-  (let ((raw-keywords
-	 (split-string (denote-retrieve-filename-keywords absolute-fpath) " ")))
-    (if (cl-equalp (car raw-keywords) "")
-	nil
-	raw-keywords)))
+(cl-defstruct
+    (denote-graph--node
+     (:constructor denote-graph--node-new)
+     (:copier nil))
+  "A structure representing a `denote' file and its attributes."
+  id fpath title keywords)
+
 
 (defun denote-graph--mk-node (absolute-fpath)
-  "Generate a node from ABSOLUTE-FPATH.
+  "Generate a graph-node from ABSOLUTE-FPATH.
 
-The node will be structured as (timestamp human-title (keyword1 keyword2 ...))"
-  (list (denote-retrieve-filename-identifier absolute-fpath)
-	(denote-retrieve-filename-title absolute-fpath)
-	(denote-graph--extract-keywords-from absolute-fpath)))
+The graph-node is a cl-structure containing ID, human-title, and (keyword1 keyword2 ...)"
+  (denote-graph--node-new
+   :id (denote-retrieve-filename-identifier absolute-fpath)
+   :fpath absolute-fpath
+   :title (denote-retrieve-filename-title absolute-fpath)
+   :keywords (denote-graph--extract-keywords-from absolute-fpath)))
+
+
+;;; =============================================================================
+
+(defun denote-graph--extract-keywords-from (absolute-fpath)
+  "Return the keywords list of ABSOLUTE-FPATH, if any."
+  (split-string
+   (denote-retrieve-filename-keywords absolute-fpath) " " t))
+
 
 (defun denote-graph--filtered-links (absolute-fpath)
-  "Returns non-excluded neighbours nodes of ABSOLUTE-FPATH.
+  "Return non-excluded neighbours nodes of ABSOLUTE-FPATH.
 
-Excludes adjaecent nodes from list of links (per DENOTE-GRAPH-EXCLUDE-NODE-IF)."
-  (cl-loop for fpath-link in (denote-link-return-links absolute-fpath)
-	   if (not (funcall denote-graph-exclude-node-if fpath-link))
-	   collect fpath-link))
+Adjaecent nodes may be excluded according to DENOTE-GRAPH-EXCLUDE-NODE-IF."
+  (cl-loop
+   for     fpath-link in (denote-link-return-links absolute-fpath)
+   unless  (funcall denote-graph-exclude-node-if fpath-link)
+   collect fpath-link))
+
 
 (defun denote-graph--mk-graph ()
-  "Generate a Lisp graph from the files in denote-directory.
+  "Generate the graph representing relations between `denote' notes.
 
-The generated graph is a list of 'rows'.
+The graph is built from the files in DENOTE-DIRECTORY.
 
-A row is a list with structure (node1 node2 ... nodeN), which encode the
+The generated graph is represented as an adjacency list, i.e. as a list of lists.
+
+Each list has the structure (node1 node2 ... nodeN), which encode the
 information 'the neighbours of node1 are node2 ... nodeN'.
 "
   ;; A graph is a list of rows.
   ;; A row is a list of nodes; the first node is the root, the rest are its neighbours.
   ;; A node is a list of the form: (timestamp human-name (keyword1 keyword2 ...))
   (cl-loop
-   for fname in (denote-directory-files)
-     if (not (funcall denote-graph-exclude-node-if fname))
-       collect
-       (mapcar #'denote-graph--mk-node
- 	       (cons fname
-		     (denote-graph--filtered-links fname)))))
+   for     fname in (denote-directory-files)
+   unless  (funcall denote-graph-exclude-node-if fname)
+   collect (mapcar #'denote-graph--mk-node
+ 		   (cons fname (denote-graph--filtered-links fname)))))
 
 ;;; =============================================================================
 ;;; Convert the lisp representations of nodes into DOT source code
 
 (defun denote-graph--generate-dot-nodename (node)
-  "Extract a nodename from NODE."
-  ;; Eg. (timestamp human keywords) -> "human"
-  (cl-destructuring-bind (_timestamp human-name _keywords) node
-    (format "\"%s\"" human-name)))
+  "Extract the dot nodename from NODE."
+  (format "\"%s\"" (denote-graph--node-title node)))
+
 
 (defun denote-graph--generate-dot-nodes-list (graph)
   "Generate DOT source code which declares nodes.
@@ -122,9 +134,8 @@ The list of unique nodenames is extracted from GRAPH.
 The result is a list of strings, each one declaring a
 graph node in DOT language."
   (cl-loop
-   for tuple in (cl-delete-duplicates (denote-graph--flatten graph) :test 'cl-equalp)
-	  collect
-	  (denote-graph--generate-dot-nodename tuple)))
+   for     node in (delete-dups (denote-graph--flatten graph))
+   collect (denote-graph--generate-dot-nodename node)))
 
 
 ;;; =============================================================================
@@ -155,13 +166,12 @@ graph node in DOT language."
 (defun denote-graph--output-path ()
   "Depending on the type of DENOTE-GRAPH-OUTPUT-FILENAME, retrieve
 or evaluate the output DOT file path."
-  (if (consp denote-graph-output-filename)
+  (if (consp denote-graph-output-filename) ; TODO: ?? in case of quoted function?
       (funcall denote-graph-output-filename)
       denote-graph-output-filename))
 
 (defun denote-graph-generate-dot-sourcecode ()
   "Generate the DOT source code of your knowledge graph."
-  ;; (let ((graph (denote-graph--filter-undesired-rows (denote-graph--mk-graph))))
   (let ((graph (denote-graph--mk-graph)))
     (format "digraph {\n%s\n%s\n}"
 	    (mapconcat 'identity (denote-graph--generate-dot-nodes-list graph) "\n")
@@ -172,12 +182,11 @@ or evaluate the output DOT file path."
   "Write to file the DOT source code of your knowledge graph."
   (interactive)
   (message "Generating DOT source code...")
-  (with-temp-file (denote-graph--output-path) ;denote-graph-output-filename
+  (with-temp-file (denote-graph--output-path) 
     (insert (denote-graph-generate-dot-sourcecode)))
   (find-file (denote-graph--output-path)) ;denote-graph-output-filename)
   (message "Done"))
 
-;; (insert (denote-graph-generate-dot-sourcecode))
 
 (provide 'denote-graph)
 
